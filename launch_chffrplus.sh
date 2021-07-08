@@ -20,7 +20,10 @@ function two_init {
   echo 0-1 > /dev/cpuset/android/cpus
 
   # openpilot gets all the cores
-  echo 0-3 > /dev/cpuset/app/cpus
+  echo 0-2 > /dev/cpuset/app/cpus
+  mkdir /dev/cpuset/perf
+  echo 0-3 > /dev/cpuset/perf/cpus
+  echo 0 > /dev/cpuset/perf/mems
 
   # mask off 2-3 from RPS and XPS - Receive/Transmit Packet Steering
   echo 3 | tee  /sys/class/net/*/queues/*/rps_cpus
