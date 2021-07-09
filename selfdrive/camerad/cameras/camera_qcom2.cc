@@ -26,7 +26,6 @@
 #define FRAME_HEIGHT 1208
 //#define FRAME_STRIDE 1936 // for 8 bit output
 #define FRAME_STRIDE 2416  // for 10 bit output
-//#define FRAME_STRIDE 1936 // for 8 bit output
 
 #define MIPI_SETTLE_CNT 33  // Calculated by camera_freqs.py
 
@@ -417,7 +416,7 @@ void config_isp(struct CameraState *s, int io_mem_handle, int fence, int request
 		 .h_init = 0x0,
 		 .v_init = 0x0,
 		};
-    io_cfg[0].format = CAM_FORMAT_MIPI_RAW_10;
+    io_cfg[0].format = CAM_FORMAT_MIPI_RAW_12;
     io_cfg[0].color_pattern = 0x5;
     io_cfg[0].bpp = 0xc;
     io_cfg[0].resource_type = CAM_ISP_IFE_OUT_RES_RDI_0;

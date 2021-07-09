@@ -38,7 +38,7 @@ struct i2c_random_wr_payload init_array_ar0231[] = {
 
   // Readout Settings
   {0x31AE, 0x0204}, // SERIAL_FORMAT, 4-lane MIPI
-  {0x31AC, 0x0C0A}, // DATA_FORMAT_BITS, 12 -> 10
+  {0x31AC, 0x0C0C}, // DATA_FORMAT_BITS, 12 -> 10
   {0x3342, 0x122B}, // MIPI_F1_PDT_EDT
   {0x3346, 0x122B}, // MIPI_F2_PDT_EDT
   {0x334A, 0x122B}, // MIPI_F3_PDT_EDT

@@ -39,17 +39,17 @@ half3 color_correct(half3 rgb, int ggain) {
   return ret;
 }
 
-half val_from_10(const uchar * source, int gx, int gy) {
-  // parse 10bit
+half val_from_12(const uchar * source, int gx, int gy) {
+  // parse 12bit
   int start = gy * FRAME_STRIDE + (5 * (gx / 4));
   int offset = gx % 4;
   uint major = (uint)source[start + offset] << 2;
-  uint minor = (source[start + 4] >> (2 * offset)) & 3;
+  uint minor = (source[start + 4] >> (2 * offset)) & 15;
   half pv = (half)(major + minor);
 
   // normalize
   pv = max(0.0h, pv - black_level);
-  pv *= 0.00101833h; // /= (1024.0f - black_level);
+  pv *= 0.000246669955599408h; // /= (4096.0f - black_level);
 
   // correct vignetting
   if (CAM_NUM == 1) { // fcamera
@@ -103,7 +103,7 @@ __kernel void debayer10(const __global uchar * in,
 
   int out_idx = 3 * x_global + 3 * y_global * RGB_WIDTH;
 
-  half pv = val_from_10(in, x_global, y_global);
+  half pv = val_from_12(in, x_global, y_global);
   cached[localOffset] = pv;
 
   // don't care
@@ -119,22 +119,22 @@ __kernel void debayer10(const __global uchar * in,
   if (x_local < 1) {
     localColOffset = x_local;
     globalColOffset = -1;
-    cached[(y_local + 1) * localRowLen + x_local] = val_from_10(in, x_global-1, y_global);
+    cached[(y_local + 1) * localRowLen + x_local] = val_from_12(in, x_global-1, y_global);
   } else if (x_local >= get_local_size(0) - 1) {
     localColOffset = x_local + 2;
     globalColOffset = 1;
-    cached[localOffset + 1] = val_from_10(in, x_global+1, y_global);
+    cached[localOffset + 1] = val_from_12(in, x_global+1, y_global);
   }
 
   if (y_local < 1) {
-    cached[y_local * localRowLen + x_local + 1] = val_from_10(in, x_global, y_global-1);
+    cached[y_local * localRowLen + x_local + 1] = val_from_12(in, x_global, y_global-1);
     if (localColOffset != -1) {
-      cached[y_local * localRowLen + localColOffset] = val_from_10(in, x_global+globalColOffset, y_global-1);
+      cached[y_local * localRowLen + localColOffset] = val_from_12(in, x_global+globalColOffset, y_global-1);
     }
   } else if (y_local >= get_local_size(1) - 1) {
-    cached[(y_local + 2) * localRowLen + x_local + 1] = val_from_10(in, x_global, y_global+1);
+    cached[(y_local + 2) * localRowLen + x_local + 1] = val_from_12(in, x_global, y_global+1);
     if (localColOffset != -1) {
-      cached[(y_local + 2) * localRowLen + localColOffset] = val_from_10(in, x_global+globalColOffset, y_global+1);
+      cached[(y_local + 2) * localRowLen + localColOffset] = val_from_12(in, x_global+globalColOffset, y_global+1);
     }
   }
 
