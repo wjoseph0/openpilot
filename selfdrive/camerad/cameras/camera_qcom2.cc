@@ -618,11 +618,11 @@ static void camera_open(CameraState *s) {
   in_port_info->lane_cfg = 0x3210;
 
   in_port_info->vc = 0x0;
-  //in_port_info->dt = 0x2C; //CSI_RAW12
-  //in_port_info->format = CAM_FORMAT_MIPI_RAW_12;
+  in_port_info->dt = 0x2C; //CSI_RAW12
+  in_port_info->format = CAM_FORMAT_MIPI_RAW_12;
 
-  in_port_info->dt = 0x2B; //CSI_RAW10
-  in_port_info->format = CAM_FORMAT_MIPI_RAW_10;
+  // in_port_info->dt = 0x2B; //CSI_RAW10
+  // in_port_info->format = CAM_FORMAT_MIPI_RAW_10;
 
   in_port_info->test_pattern = 0x2; // 0x3?
   in_port_info->usage_type = 0x0;
@@ -648,8 +648,8 @@ static void camera_open(CameraState *s) {
   in_port_info->num_out_res = 0x1;
   in_port_info->data[0] = (struct cam_isp_out_port_info){
     .res_type = CAM_ISP_IFE_OUT_RES_RDI_0,
-    //.format = CAM_FORMAT_MIPI_RAW_12,
-    .format = CAM_FORMAT_MIPI_RAW_10,
+    .format = CAM_FORMAT_MIPI_RAW_12,
+    // .format = CAM_FORMAT_MIPI_RAW_10,
     .width = FRAME_WIDTH,
     .height = FRAME_HEIGHT,
     .comp_grp_id = 0x0, .split_point = 0x0, .secure_mode = 0x0,
