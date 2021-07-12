@@ -29,6 +29,13 @@ function two_init {
   echo 3 | tee  /sys/class/net/*/queues/*/rps_cpus
   echo 3 | tee  /sys/class/net/*/queues/*/xps_cpus
 
+  # offline cores 2-3 to force recurring timers onto the other cores
+  echo 0 > /sys/devices/system/cpu/cpu2/online
+  echo 0 > /sys/devices/system/cpu/cpu3/online
+  sleep 1
+  echo 1 > /sys/devices/system/cpu/cpu2/online
+  echo 1 > /sys/devices/system/cpu/cpu3/online
+
   # *** set up IRQ affinities ***
 
   # core 1 - non essential IRQs
