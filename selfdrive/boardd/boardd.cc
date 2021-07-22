@@ -466,6 +466,7 @@ void hardware_control_thread() {
     }
 
     if (ir_pwr != prev_ir_pwr || cnt % 100 == 0 || ir_pwr >= 50.0) {
+      LOG("Cur IR power: %d", ir_pwr);
       panda->set_ir_pwr(ir_pwr);
       prev_ir_pwr = ir_pwr;
     }
