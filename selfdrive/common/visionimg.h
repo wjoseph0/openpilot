@@ -23,6 +23,7 @@
 #undef None
 #undef Status
 #undef Unsorted
+#undef Success
 #endif
 
 class EGLImageTexture {

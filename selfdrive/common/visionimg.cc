@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <drm/drm_fourcc.h>
 
 #define GL_GLEXT_PROTOTYPES
 #include <GLES2/gl2ext.h>
@@ -62,12 +63,12 @@ EGLImageTexture::EGLImageTexture(const VisionBuf *buf) {
   std::cout << "egl error: " << eglGetError() << std::endl;
 
 	EGLint img_attrs[] = {
-		EGL_WIDTH, buf->width,
-		EGL_HEIGHT, buf->height,
+		EGL_WIDTH, (int)buf->width,
+		EGL_HEIGHT, (int)buf->height,
 		EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_RGB888,
 		EGL_DMA_BUF_PLANE0_FD_EXT, buf->fd,
 		EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-		EGL_DMA_BUF_PLANE0_PITCH_EXT, buf->width * 3,
+		EGL_DMA_BUF_PLANE0_PITCH_EXT, (int)buf->width * 3,
 		EGL_NONE
 	};
 
