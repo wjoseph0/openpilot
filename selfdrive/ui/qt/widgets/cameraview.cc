@@ -170,7 +170,7 @@ void CameraViewWidget::paintGL() {
   glActiveTexture(GL_TEXTURE0);
 
   glBindTexture(GL_TEXTURE_2D, texture[latest_frame->idx]->frame_tex);
-  if (!Hardware::EON()) {
+  if (Hardware::PC()) {
     // this is handled in ion on QCOM
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, latest_frame->width, latest_frame->height,
                   0, GL_RGB, GL_UNSIGNED_BYTE, latest_frame->addr);
@@ -188,10 +188,20 @@ void CameraViewWidget::paintGL() {
 }
 
 void CameraViewWidget::updateFrame() {
+  if (context() != nullptr) {
+    LOGE("No conext");
+    return;
+  }
+
+  if (!context()->nativeHandle().canConvert<QEGLNativeContext>()) {
+    LOGE("Invalid context");
+  }
+
   if (!vipc_client->connected && vipc_client->connect(false)) {
     // init vision
+    QEGLNativeContext qEglContext = qvariant_cast<QEGLNativeContext>(context()->nativeHandle());
     for (int i = 0; i < vipc_client->num_buffers; i++) {
-      texture[i].reset(new EGLImageTexture(&vipc_client->buffers[i]));
+      texture[i].reset(new EGLImageTexture(&vipc_client->buffers[i], qEglContext.context(), qEglContext.display()));
 
       glBindTexture(GL_TEXTURE_2D, texture[i]->frame_tex);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);

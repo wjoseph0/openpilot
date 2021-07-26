@@ -189,8 +189,16 @@ void NvgWindow::updateState(const UIState &s) {
   }
 
   makeCurrent();
-  QEGLNativeContext qEglContext = qvariant_cast<QEGLNativeContext>(context()->nativeHandle());
-  update_vision(&QUIState::ui_state, &qEglContext);
+  if (context() != nullptr) {
+    if (context()->nativeHandle().canConvert<QEGLNativeContext>()) {
+      QEGLNativeContext qEglContext = qvariant_cast<QEGLNativeContext>(context()->nativeHandle());
+      update_vision(&QUIState::ui_state, &qEglContext);
+    } else {
+      LOGE("Invalid context");
+    }
+  } else {
+    LOGE("No context");
+  }
 
   repaint();
 }
