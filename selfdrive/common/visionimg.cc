@@ -55,12 +55,10 @@ EGLImageTexture::~EGLImageTexture() {
 
 #else // ifdef QCOM
 
-EGLImageTexture::EGLImageTexture(const VisionBuf *buf) {
+EGLImageTexture::EGLImageTexture(const VisionBuf *buf, EGLContext context, EGLDisplay display){
   EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+  assert(context != EGL_NO_CONTEXT);
   assert(display != EGL_NO_DISPLAY);
-
-  eglInitialize(display, NULL, NULL);
-  std::cout << "egl error: " << eglGetError() << std::endl;
 
 	EGLint img_attrs[] = {
 		EGL_WIDTH, (int)buf->width,

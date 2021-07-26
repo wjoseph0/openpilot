@@ -28,7 +28,7 @@
 
 class EGLImageTexture {
  public:
-  EGLImageTexture(const VisionBuf *buf);
+  EGLImageTexture(const VisionBuf *buf, EGLContext context, EGLDisplay display);
   ~EGLImageTexture();
   GLuint frame_tex = 0;
 #ifdef QCOM

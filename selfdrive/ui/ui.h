@@ -23,6 +23,8 @@
 #include "selfdrive/common/util.h"
 #include "selfdrive/common/visionimg.h"
 
+#include <QtPlatformHeaders/QEGLNativeContext>
+
 #define COLOR_BLACK nvgRGBA(0, 0, 0, 255)
 #define COLOR_BLACK_ALPHA(x) nvgRGBA(0, 0, 0, x)
 #define COLOR_WHITE nvgRGBA(255, 255, 255, 255)
@@ -37,6 +39,7 @@ typedef cereal::CarControl::HUDControl::AudibleAlert AudibleAlert;
 // TODO: choose based on frame input size
 const float y_offset = Hardware::TICI() ? 150.0 : 0.0;
 const float ZOOM = Hardware::TICI() ? 2912.8 : 2138.5;
+
 
 typedef struct Rect {
   int x, y, w, h;
@@ -60,7 +63,7 @@ typedef struct Alert {
   }
 } Alert;
 
-const Alert CONTROLS_WAITING_ALERT = {"openpilot Unavailable", "Waiting for controls to start", 
+const Alert CONTROLS_WAITING_ALERT = {"openpilot Unavailable", "Waiting for controls to start",
                                       "controlsWaiting", cereal::ControlsState::AlertSize::MID,
                                       AudibleAlert::NONE};
 
@@ -209,3 +212,6 @@ public slots:
   void setAwake(bool on, bool reset);
   void update(const UIState &s);
 };
+
+
+void update_vision(UIState *s, const QEGLNativeContext *context);

@@ -182,11 +182,16 @@ void NvgWindow::initializeGL() {
 void NvgWindow::updateState(const UIState &s) {
   // Connecting to visionIPC requires opengl to be current
   if (s.vipc_client->connected) {
-    makeCurrent();
+    // makeCurrent();
   }
   if (isVisible() != s.vipc_client->connected) {
     setVisible(s.vipc_client->connected);
   }
+
+  makeCurrent();
+  QEGLNativeContext qEglContext = qvariant_cast<QEGLNativeContext>(context()->nativeHandle());
+  update_vision(&QUIState::ui_state, &qEglContext);
+
   repaint();
 }
 

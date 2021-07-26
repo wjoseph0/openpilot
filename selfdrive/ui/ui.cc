@@ -35,12 +35,12 @@ static bool calib_frame_to_full_frame(const UIState *s, float in_x, float in_y, 
   return out->x >= -margin && out->x <= s->fb_w + margin && out->y >= -margin && out->y <= s->fb_h + margin;
 }
 
-static void ui_init_vision(UIState *s) {
+static void ui_init_vision(UIState *s, const QEGLNativeContext *context) {
   // Invisible until we receive a calibration message.
   s->scene.world_objects_visible = false;
 
   for (int i = 0; i < s->vipc_client->num_buffers; i++) {
-    s->texture[i].reset(new EGLImageTexture(&s->vipc_client->buffers[i]));
+    s->texture[i].reset(new EGLImageTexture(&s->vipc_client->buffers[i], context->context(), context->display()));
 
     glBindTexture(GL_TEXTURE_2D, s->texture[i]->frame_tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -210,10 +210,10 @@ static void update_params(UIState *s) {
   }
 }
 
-static void update_vision(UIState *s) {
+void update_vision(UIState *s, const QEGLNativeContext *context) {
   if (!s->vipc_client->connected && s->scene.started) {
     if (s->vipc_client->connect(false)) {
-      ui_init_vision(s);
+      ui_init_vision(s, context);
     }
   }
 
@@ -299,7 +299,7 @@ void QUIState::update() {
   update_sockets(&ui_state);
   update_state(&ui_state);
   update_status(&ui_state);
-  update_vision(&ui_state);
+  // update_vision(&ui_state);
 
   if (ui_state.scene.started != started_prev || ui_state.sm->frame == 1) {
     started_prev = ui_state.scene.started;
