@@ -1246,8 +1246,8 @@ class AcadosOcpSolver:
         #value_ = value_.astype(float)
         #stage = c_int(stage_)
 
-        #value_data = cast(value_.ctypes.data, POINTER(c_double))
-        self._set_param(self.capsule, stage_, value_.ctypes.data_as(POINTER(c_double)), value_.shape[0])
+        value_data = cast(value_.ctypes.data, POINTER(c_double))
+        self._set_param(self.capsule, stage_, value_data, value_.shape[0])
 
     def cost_set(self, start_stage_, field_, value_, api='warn'):
       self.cost_set_slice(start_stage_, start_stage_+1, field_, value_[None], api='warn')
@@ -1302,7 +1302,7 @@ class AcadosOcpSolver:
 
         self.shared_lib.ocp_nlp_constraints_model_set_slice(self.nlp_config, \
             self.nlp_dims, self.nlp_in, start_stage_, end_stage_, field,
-            value_.ctypes.data_as(POINTER(c_void_p)), dim)
+            cast(value_.ctypes.data, c_void_p), dim)
 
 
     def dynamics_get(self, stage_, field_):
