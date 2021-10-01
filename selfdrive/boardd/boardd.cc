@@ -113,10 +113,10 @@ bool safety_setter_thread(Panda *panda) {
 }
 
 
-Panda *usb_connect() {
+Panda *usb_connect(std::string serial="") {
   std::unique_ptr<Panda> panda;
   try {
-    panda = std::make_unique<Panda>();
+    panda = std::make_unique<Panda>(serial);
   } catch (std::exception &e) {
     return nullptr;
   }
@@ -557,8 +557,15 @@ void pigeon_thread(Panda *panda) {
   delete pigeon;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   LOGW("starting boardd");
+
+  std::string peripheral_panda_serial, panda_serial;
+  if (argc == 3) {
+    peripheral_panda_serial = std::string(argv[1]);
+    panda_serial = std::string(argv[2]);
+    LOGW("Got serial numbers: %s %s", peripheral_panda_serial.c_str(), panda_serial.c_str());
+  }
 
   // set process priority and affinity
   int err = set_realtime_priority(54);
@@ -571,8 +578,14 @@ int main() {
   PubMaster pm({"pandaStates", "peripheralState"});
 
   while (!do_exit) {
-    Panda *panda = usb_connect();
-    Panda *peripheral_panda = panda;
+    Panda *peripheral_panda = usb_connect(peripheral_panda_serial);
+    Panda *panda = nullptr;
+
+    if (peripheral_panda_serial == panda_serial) {
+      panda = peripheral_panda;
+    } else {
+      panda = usb_connect(panda_serial);
+    }
 
     // Send empty pandaState & peripheralState and try again
     if (panda == nullptr || peripheral_panda == nullptr) {
