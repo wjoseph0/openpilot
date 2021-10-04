@@ -382,6 +382,12 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
       ignition = ignition || send_panda_state(pm, panda, spoofing_started);
     }
 
+    // check if we have new pandas and are offroad
+    if (!ignition && (pandas.size() != Panda::list().size())) {
+      LOGW("Reconnecting to changed amount of pandas!");
+      goto fail;
+    }
+
     // clear VIN, CarParams, and set new safety on car start
     if (ignition && !ignition_last) {
       params.clearAll(CLEAR_ON_IGNITION_ON);
