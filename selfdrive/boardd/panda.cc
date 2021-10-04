@@ -81,6 +81,9 @@ Panda::Panda(std::string serial) {
   has_rtc = (hw_type == cereal::PandaState::PandaType::UNO) ||
             (hw_type == cereal::PandaState::PandaType::DOS);
 
+  is_internal = (hw_type == cereal::PandaState::PandaType::UNO) ||
+                (hw_type == cereal::PandaState::PandaType::DOS);
+
   return;
 
 fail:
@@ -147,6 +150,16 @@ finish:
     libusb_exit(context);
   }
   return serials;
+}
+
+std::vector<Panda *> Panda::device_list() {
+  std::vector<Panda *> pandas;
+  for(const auto& serial : list()){
+    try {
+      pandas.push_back(new Panda(serial));
+    } catch (std::exception &e) {}
+  }
+  return pandas;
 }
 
 void Panda::handle_usb_issue(int err, const char func[]) {
@@ -343,14 +356,16 @@ void Panda::send_heartbeat() {
   usb_write(0xf3, 1, 0);
 }
 
-void Panda::can_send(capnp::List<cereal::CanData>::Reader can_data_list) {
+void Panda::can_send(std::list<cereal::CanData::Reader> can_data_list) {
   static std::vector<uint32_t> send;
   const int msg_count = can_data_list.size();
 
   send.resize(msg_count*0x10);
 
   for (int i = 0; i < msg_count; i++) {
-    auto cmsg = can_data_list[i];
+    auto cmsg = can_data_list.front();
+    can_data_list.pop_front();
+
     if (cmsg.getAddress() >= 0x800) { // extended
       send[i*4] = (cmsg.getAddress() << 3) | 5;
     } else { // normal
@@ -365,7 +380,7 @@ void Panda::can_send(capnp::List<cereal::CanData>::Reader can_data_list) {
   usb_bulk_write(3, (unsigned char*)send.data(), send.size(), 5);
 }
 
-int Panda::can_receive(kj::Array<capnp::word>& out_buf) {
+int Panda::can_receive(kj::Array<capnp::word>& out_buf, uint32_t bus_offset) {
   uint32_t data[RECV_SIZE/4];
   int recv = usb_bulk_read(0x81, (unsigned char*)data, RECV_SIZE);
 
@@ -395,7 +410,7 @@ int Panda::can_receive(kj::Array<capnp::word>& out_buf) {
     canData[i].setBusTime(data[i*4+1] >> 16);
     int len = data[i*4+1]&0xF;
     canData[i].setDat(kj::arrayPtr((uint8_t*)&data[i*4+2], len));
-    canData[i].setSrc((data[i*4+1] >> 4) & 0xff);
+    canData[i].setSrc(((data[i*4+1] >> 4) & 0xff) + bus_offset);
   }
   out_buf = capnp::messageToFlatArray(msg);
   return recv;

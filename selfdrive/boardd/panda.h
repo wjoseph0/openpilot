@@ -6,6 +6,7 @@
 #include <mutex>
 #include <optional>
 #include <vector>
+#include <list>
 
 #include <libusb-1.0/libusb.h>
 
@@ -57,9 +58,11 @@ class Panda {
   std::atomic<bool> comms_healthy = true;
   cereal::PandaState::PandaType hw_type = cereal::PandaState::PandaType::UNKNOWN;
   bool has_rtc = false;
+  bool is_internal = false;
 
   // Static functions
   static std::vector<std::string> list();
+  static std::vector<Panda *> device_list();
 
   // HW communication
   int usb_write(uint8_t bRequest, uint16_t wValue, uint16_t wIndex, unsigned int timeout=TIMEOUT);
@@ -83,6 +86,6 @@ class Panda {
   void set_power_saving(bool power_saving);
   void set_usb_power_mode(cereal::PeripheralState::UsbPowerMode power_mode);
   void send_heartbeat();
-  void can_send(capnp::List<cereal::CanData>::Reader can_data_list);
-  int can_receive(kj::Array<capnp::word>& out_buf);
+  void can_send(std::list<cereal::CanData::Reader> can_data_list);
+  int can_receive(kj::Array<capnp::word>& out_buf, uint32_t bus_offset);
 };

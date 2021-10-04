@@ -49,18 +49,23 @@ std::string get_time_str(const struct tm &time) {
   return s;
 }
 
-bool safety_setter_thread(Panda *panda) {
+bool safety_setter_thread(std::vector<Panda *> pandas) {
   LOGD("Starting safety setter thread");
-  // diagnostic only is the default, needed for VIN query
-  panda->set_safety_model(cereal::CarParams::SafetyModel::ELM327);
+
+  for (const auto& panda : pandas) {
+    // diagnostic only is the default, needed for VIN query
+    panda->set_safety_model(cereal::CarParams::SafetyModel::ELM327);
+  }
 
   Params p = Params();
 
   // switch to SILENT when CarVin param is read
   while (true) {
-    if (do_exit || !panda->connected || !ignition) {
-      return false;
-    };
+    for (const auto& panda : pandas) {
+      if (do_exit || !panda->connected || !ignition) {
+        return false;
+      };
+    }
 
     std::string value_vin = p.get("CarVin");
     if (value_vin.size() > 0) {
@@ -72,15 +77,19 @@ bool safety_setter_thread(Panda *panda) {
     util::sleep_for(20);
   }
 
-  // VIN query done, stop listening to OBDII
-  panda->set_safety_model(cereal::CarParams::SafetyModel::ELM327, 1);
+  for (const auto& panda : pandas) {
+    // VIN query done, stop listening to OBDII
+    panda->set_safety_model(cereal::CarParams::SafetyModel::ELM327, 1);
+  }
 
   std::string params;
   LOGW("waiting for params to set safety model");
   while (true) {
-    if (do_exit || !panda->connected || !ignition) {
-      return false;
-    };
+    for (const auto& panda : pandas) {
+      if (do_exit || !panda->connected || !ignition) {
+        return false;
+      }
+    }
 
     if (p.getBool("ControlsReady")) {
       params = p.get("CarParams");
@@ -106,24 +115,20 @@ bool safety_setter_thread(Panda *panda) {
     safety_param = 0;
   }
 
-  panda->set_unsafe_mode(0);  // see safety_declarations.h for allowed values
+  for (const auto& panda : pandas) {
+    panda->set_unsafe_mode(0);  // see safety_declarations.h for allowed values
+  }
 
   LOGW("setting safety model: %d with param %d", (int)safety_model, safety_param);
-  panda->set_safety_model(safety_model, safety_param);
+  for (const auto& panda : pandas) {
+    // TODO: do we need to add a safety param which is panda index specific
+    panda->set_safety_model(safety_model, safety_param);
+  }
+
   return true;
 }
 
-
-Panda *usb_connect(std::string serial="") {
-  std::unique_ptr<Panda> panda;
-  try {
-    panda = std::make_unique<Panda>(serial);
-  } catch (std::exception &e) {
-    return nullptr;
-  }
-
-  Params params = Params();
-
+void panda_init(Panda *panda) {
   if (getenv("BOARDD_LOOPBACK")) {
     panda->set_loopback(true);
   }
@@ -146,18 +151,16 @@ Panda *usb_connect(std::string serial="") {
       settimeofday(&tv, 0);
     }
   }
-
-  return panda.release();
 }
 
-void can_recv(Panda *panda, PubMaster &pm) {
+void can_recv(Panda *panda, PubMaster &pm, uint32_t panda_index) {
   kj::Array<capnp::word> can_data;
-  panda->can_receive(can_data);
+  panda->can_receive(can_data, (panda_index * 4));
   auto bytes = can_data.asBytes();
   pm.send("can", bytes.begin(), bytes.size());
 }
 
-void can_send_thread(Panda *panda, bool fake_send) {
+void can_send_thread(std::vector<Panda *> pandas, bool fake_send) {
   LOGD("start send thread");
 
   AlignedBuffer aligned_buf;
@@ -167,7 +170,10 @@ void can_send_thread(Panda *panda, bool fake_send) {
   subscriber->setTimeout(100);
 
   // run as fast as messages come in
-  while (!do_exit && panda->connected && all_connected) {
+  while (!do_exit && all_connected) {
+    for (const auto& panda : pandas) {
+      if (!panda->connected) goto fail;
+    }
     Message * msg = subscriber->receive();
 
     if (!msg) {
@@ -183,20 +189,33 @@ void can_send_thread(Panda *panda, bool fake_send) {
     //Dont send if older than 1 second
     if (nanos_since_boot() - event.getLogMonoTime() < 1e9) {
       if (!fake_send) {
-        panda->can_send(event.getSendcan());
+        auto can_data = event.getSendcan();
+
+        for (uint32_t i = 0; i < pandas.size(); i++) {
+          std::list<cereal::CanData::Reader> filtered_can_data;
+
+          for (const auto& msg : can_data) {
+            if ((msg.getSrc() / 4) == i) {
+              filtered_can_data.push_back(msg);
+            }
+          }
+
+          pandas[i]->can_send(filtered_can_data);
+        }
       }
     }
 
     delete msg;
   }
 
+fail:
   delete subscriber;
   delete context;
 
   all_connected = false;
 }
 
-void can_recv_thread(Panda *panda) {
+void can_recv_thread(std::vector<Panda *> pandas) {
   LOGD("start recv thread");
 
   // can = 8006
@@ -206,8 +225,12 @@ void can_recv_thread(Panda *panda) {
   const uint64_t dt = 10000000ULL;
   uint64_t next_frame_time = nanos_since_boot() + dt;
 
-  while (!do_exit && panda->connected && all_connected) {
-    can_recv(panda, pm);
+  while (!do_exit && all_connected) {
+    for (uint32_t i = 0; i < pandas.size(); i++) {
+      if (!pandas[i]->connected) goto fail;
+
+      can_recv(pandas[i], pm, i);
+    }
 
     uint64_t cur_time = nanos_since_boot();
     int64_t remaining = next_frame_time - cur_time;
@@ -223,6 +246,7 @@ void can_recv_thread(Panda *panda) {
     next_frame_time += dt;
   }
 
+fail:
   all_connected = false;
 }
 
@@ -338,23 +362,31 @@ void send_peripheral_state(PubMaster *pm, Panda *panda) {
   pm->send("peripheralState", msg);
 }
 
-void panda_state_thread(PubMaster *pm, Panda * peripheral_panda, Panda *panda, bool spoofing_started) {
+void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofing_started) {
   Params params;
+  Panda *peripheral_panda = pandas[0];
   bool ignition_last = false;
   std::future<bool> safety_future;
 
   LOGD("start panda state thread");
 
   // run at 2hz
-  while (!do_exit && panda->connected && all_connected) {
+  while (!do_exit && all_connected) {
+    for (const auto &panda : pandas) {
+      if (!panda->connected) goto fail;
+    }
+
     send_peripheral_state(pm, peripheral_panda);
-    ignition = send_panda_state(pm, panda, spoofing_started);
+    ignition = false;
+    for (const auto &panda : pandas) {
+      ignition = ignition || send_panda_state(pm, panda, spoofing_started);
+    }
 
     // clear VIN, CarParams, and set new safety on car start
     if (ignition && !ignition_last) {
       params.clearAll(CLEAR_ON_IGNITION_ON);
       if (!safety_future.valid() || safety_future.wait_for(0ms) == std::future_status::ready) {
-        safety_future = std::async(std::launch::async, safety_setter_thread, panda);
+        safety_future = std::async(std::launch::async, safety_setter_thread, pandas);
       } else {
         LOGW("Safety setter thread already running");
       }
@@ -364,10 +396,13 @@ void panda_state_thread(PubMaster *pm, Panda * peripheral_panda, Panda *panda, b
 
     ignition_last = ignition;
 
-    panda->send_heartbeat();
+    for (const auto &panda : pandas) {
+      panda->send_heartbeat();
+    }
     util::sleep_for(500);
   }
 
+fail:
   all_connected = false;
 }
 
@@ -549,13 +584,6 @@ void pigeon_thread(Panda *panda) {
 int main(int argc, char* argv[]) {
   LOGW("starting boardd");
 
-  std::string peripheral_panda_serial, panda_serial;
-  if (argc == 3) {
-    peripheral_panda_serial = std::string(argv[1]);
-    panda_serial = std::string(argv[2]);
-    LOGW("Got serial numbers: %s %s", peripheral_panda_serial.c_str(), panda_serial.c_str());
-  }
-
   // set process priority and affinity
   int err = set_realtime_priority(54);
   LOG("set priority returns %d", err);
@@ -568,34 +596,55 @@ int main(int argc, char* argv[]) {
 
   while (!do_exit) {
     std::vector<std::thread> threads;
+    std::vector<Panda *> pandas;
+    Panda *peripheral_panda;
 
-    Panda *peripheral_panda = usb_connect(peripheral_panda_serial);
-    Panda *panda = (peripheral_panda_serial == panda_serial) ? peripheral_panda : usb_connect(panda_serial);
+    pandas = Panda::device_list();
+    for (const auto& panda : pandas){
+      panda_init(panda);
+    }
 
     // Send empty pandaState & peripheralState and try again
-    if (panda == nullptr || peripheral_panda == nullptr) {
+    if (pandas.size() == 0) {
       send_empty_panda_state(&pm);
       send_empty_peripheral_state(&pm);
       util::sleep_for(500);
       goto fail;
     }
 
+    // Sort to make sure the pandas are always in a deterministic order
+    std::sort(pandas.begin(), pandas.end(),
+      [](const Panda *a, const Panda *b) -> bool {
+        // Make sure the internal one is always first
+        if (a->is_internal && !b->is_internal) return true;
+        if (!a->is_internal && b->is_internal) return false;
+
+        // Sort by hardware type
+        if (a->hw_type != b->hw_type) {
+          return a->hw_type > b->hw_type;
+        }
+
+        // Last resort, sort by serial
+        return a->usb_serial.compare(b->usb_serial);
+      }
+    );
+    peripheral_panda = pandas[0];
+
     LOGW("connected to board");
     all_connected = true;
 
-    threads.emplace_back(panda_state_thread, &pm, peripheral_panda, panda, getenv("STARTED") != nullptr);
+    threads.emplace_back(panda_state_thread, &pm, pandas, getenv("STARTED") != nullptr);
     threads.emplace_back(peripheral_control_thread, peripheral_panda);
     threads.emplace_back(pigeon_thread, peripheral_panda);
 
-    threads.emplace_back(can_send_thread, panda, getenv("FAKESEND") != nullptr);
-    threads.emplace_back(can_recv_thread, panda);
+    threads.emplace_back(can_send_thread, pandas, getenv("FAKESEND") != nullptr);
+    threads.emplace_back(can_recv_thread, pandas);
 
     for (auto &t : threads) t.join();
 
 fail:
-    if (peripheral_panda_serial != panda_serial) {
-      delete peripheral_panda;
+    for (const auto& panda : pandas){
+      delete panda;
     }
-    delete panda;
   }
 }
