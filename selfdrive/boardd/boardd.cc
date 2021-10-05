@@ -133,7 +133,16 @@ bool safety_setter_thread(std::vector<Panda *> pandas) {
   return true;
 }
 
-void panda_init(Panda *panda) {
+Panda *usb_connect(std::string serial="") {
+  std::unique_ptr<Panda> panda;
+  try {
+    panda = std::make_unique<Panda>(serial);
+  } catch (std::exception &e) {
+    return nullptr;
+  }
+
+  Params params = Params();
+
   if (getenv("BOARDD_LOOPBACK")) {
     panda->set_loopback(true);
   }
@@ -156,6 +165,8 @@ void panda_init(Panda *panda) {
       settimeofday(&tv, 0);
     }
   }
+
+  return panda.release();
 }
 
 void can_recv(Panda *panda, PubMaster &pm, uint32_t panda_index) {
@@ -593,6 +604,10 @@ void pigeon_thread(Panda *panda) {
 }
 
 int main(int argc, char* argv[]) {
+  std::vector<std::thread> threads;
+  std::vector<Panda *> pandas;
+  Panda *peripheral_panda;
+
   LOGW("starting boardd");
 
   // set process priority and affinity
@@ -605,57 +620,50 @@ int main(int argc, char* argv[]) {
   LOGW("attempting to connect");
   PubMaster pm({"pandaStates", "peripheralState"});
 
+  // connect loop
   while (!do_exit) {
-    std::vector<std::thread> threads;
-    std::vector<Panda *> pandas;
-    Panda *peripheral_panda;
-
-    pandas = Panda::device_list();
-    for (const auto& panda : pandas){
-      panda_init(panda);
+    if (argc == 1) {
+      // no serials provided, so we'll use just the first panda we find
+      Panda *p = usb_connect();
+      if (p != NULL) {
+        pandas.push_back(p);
+      }
+    } else {
+      // connect to all provided serials
+      for (int i=0; i<(argc-1); i++) {
+        Panda *p = usb_connect(std::string(argv[1+i]));
+        if (p != NULL) {
+          pandas.push_back(p);
+        }
+      }
     }
 
-    // Send empty pandaState & peripheralState and try again
+    // send empty pandaState & peripheralState and try again
     if (pandas.size() == 0) {
       send_empty_panda_state(&pm);
       send_empty_peripheral_state(&pm);
       util::sleep_for(500);
-      goto fail;
+    } else {
+      break;
     }
+  }
 
-    // Sort to make sure the pandas are always in a deterministic order
-    std::sort(pandas.begin(), pandas.end(),
-      [](const Panda *a, const Panda *b) -> bool {
-        // Make sure the internal one is always first
-        if (a->is_internal && !b->is_internal) return true;
-        if (!a->is_internal && b->is_internal) return false;
+  peripheral_panda = pandas[0];
 
-        // Sort by hardware type
-        if (a->hw_type != b->hw_type) {
-          return a->hw_type > b->hw_type;
-        }
+  LOGW("connected to board");
+  all_connected = true;
 
-        // Last resort, sort by serial
-        return a->usb_serial.compare(b->usb_serial);
-      }
-    );
-    peripheral_panda = pandas[0];
+  threads.emplace_back(panda_state_thread, &pm, pandas, getenv("STARTED") != nullptr);
+  threads.emplace_back(peripheral_control_thread, peripheral_panda);
+  threads.emplace_back(pigeon_thread, peripheral_panda);
 
-    LOGW("connected to board");
-    all_connected = true;
+  threads.emplace_back(can_send_thread, pandas, getenv("FAKESEND") != nullptr);
+  threads.emplace_back(can_recv_thread, pandas);
 
-    threads.emplace_back(panda_state_thread, &pm, pandas, getenv("STARTED") != nullptr);
-    threads.emplace_back(peripheral_control_thread, peripheral_panda);
-    threads.emplace_back(pigeon_thread, peripheral_panda);
+  for (auto &t : threads) t.join();
 
-    threads.emplace_back(can_send_thread, pandas, getenv("FAKESEND") != nullptr);
-    threads.emplace_back(can_recv_thread, pandas);
-
-    for (auto &t : threads) t.join();
-
-fail:
-    for (const auto& panda : pandas){
-      delete panda;
-    }
+  // we have exited, clean up pandas
+  for (const auto& panda : pandas){
+    delete panda;
   }
 }

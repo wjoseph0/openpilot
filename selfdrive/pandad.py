@@ -2,8 +2,9 @@
 # simple boardd wrapper that updates the panda first
 import os
 import time
-
+import subprocess
 from typing import List
+from functools import cmp_to_key
 
 from panda import BASEDIR as PANDA_BASEDIR, Panda, PandaDFU
 from common.basedir import BASEDIR
@@ -14,7 +15,7 @@ from selfdrive.swaglog import cloudlog
 PANDA_FW_FN = os.path.join(PANDA_BASEDIR, "board", "obj", "panda.bin.signed")
 PANDA_H7_FW_FN = os.path.join(PANDA_BASEDIR, "board", "obj", "panda_h7.bin.signed")
 
-PERIPHERAL_TYPES = [Panda.HW_TYPE_UNO, Panda.HW_TYPE_DOS]
+INTERNAL_TYPES = [Panda.HW_TYPE_UNO, Panda.HW_TYPE_DOS]
 
 
 def get_expected_signature(panda : Panda) -> bytes:
@@ -94,30 +95,48 @@ def get_pandas() -> List[Panda]:
 
   return r
 
+def panda_sort_cmp(a : Panda, b : Panda):
+  a_type = a.get_type()
+  b_type = b.get_type()
+
+  # make sure the internal one is always first
+  if (a_type in INTERNAL_TYPES) and (b_type not in INTERNAL_TYPES):
+    return -1
+  if (a_type not in INTERNAL_TYPES) and (b_type in INTERNAL_TYPES):
+    return 1
+
+  # sort by hardware type
+  if a_type != b_type:
+    return a_type < b_type
+  
+  # last resort: sort by serial number
+  return a._serial < b._serial
 
 def main() -> None:
-  pandas = get_pandas()
+  while True:
+    pandas = get_pandas()
 
-  # check health for lost heartbeat
-  for panda in pandas:
-    health = panda.health()
-    if health["heartbeat_lost"]:
-      Params().put_bool("PandaHeartbeatLost", True)
-      cloudlog.event("heartbeat lost", deviceState=health, serial=panda._serial)
+    # check health for lost heartbeat
+    for panda in pandas:
+      health = panda.health()
+      if health["heartbeat_lost"]:
+        Params().put_bool("PandaHeartbeatLost", True)
+        cloudlog.event("heartbeat lost", deviceState=health, serial=panda._serial)
 
-    cloudlog.info(f"Resetting panda {panda._serial}")
-    panda.reset()
+      cloudlog.info(f"Resetting panda {panda._serial}")
+      panda.reset()
 
-  if len(pandas) == 1 or not TICI:
-    peripheral_panda = pandas[0]
-    panda = pandas[0]
-  else:
-    peripheral_panda = [p for p in pandas if p.get_type() in PERIPHERAL_TYPES][0] # TODO: add error handling if not found
-    panda = [p for p in pandas if p._serial != peripheral_panda._serial][0]
+    # sort pandas to have deterministic order
+    pandas.sort(key=cmp_to_key(panda_sort_cmp))
+    panda_serials = list(map(lambda p: p._serial, pandas))
 
-  os.chdir(os.path.join(BASEDIR, "selfdrive/boardd"))
-  os.execvp("./boardd", ["./boardd", peripheral_panda._serial, panda._serial])
+    # close all pandas
+    for p in pandas:
+      p.close()
 
+    # run boardd with all connected serials as arguments
+    os.chdir(os.path.join(BASEDIR, "selfdrive/boardd"))
+    subprocess.run(["./boardd", *panda_serials], check=True)
 
 if __name__ == "__main__":
   main()
