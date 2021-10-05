@@ -62,7 +62,6 @@ class Panda {
 
   // Static functions
   static std::vector<std::string> list();
-  static std::vector<Panda *> device_list();
 
   // HW communication
   int usb_write(uint8_t bRequest, uint16_t wValue, uint16_t wIndex, unsigned int timeout=TIMEOUT);

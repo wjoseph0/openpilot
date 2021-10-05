@@ -81,9 +81,6 @@ Panda::Panda(std::string serial) {
   has_rtc = (hw_type == cereal::PandaState::PandaType::UNO) ||
             (hw_type == cereal::PandaState::PandaType::DOS);
 
-  is_internal = (hw_type == cereal::PandaState::PandaType::UNO) ||
-                (hw_type == cereal::PandaState::PandaType::DOS);
-
   return;
 
 fail:
@@ -150,16 +147,6 @@ finish:
     libusb_exit(context);
   }
   return serials;
-}
-
-std::vector<Panda *> Panda::device_list() {
-  std::vector<Panda *> pandas;
-  for(const auto& serial : list()){
-    try {
-      pandas.push_back(new Panda(serial));
-    } catch (std::exception &e) {}
-  }
-  return pandas;
 }
 
 void Panda::handle_usb_issue(int err, const char func[]) {
