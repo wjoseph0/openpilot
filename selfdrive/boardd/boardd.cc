@@ -52,10 +52,11 @@ std::string get_time_str(const struct tm &time) {
 bool safety_setter_thread(std::vector<Panda *> pandas) {
   LOGD("Starting safety setter thread");
 
-  for (const auto& panda : pandas) {
-    // diagnostic only is the default, needed for VIN query
-    panda->set_safety_model(cereal::CarParams::SafetyModel::ELM327);
-  }
+  // for (const auto& panda : pandas) {
+  //   // diagnostic only is the default, needed for VIN query
+  //   panda->set_safety_model(cereal::CarParams::SafetyModel::ELM327);
+  // }
+  pandas[0]->set_safety_model(cereal::CarParams::SafetyModel::ELM327);
 
   Params p = Params();
 
@@ -77,10 +78,11 @@ bool safety_setter_thread(std::vector<Panda *> pandas) {
     util::sleep_for(20);
   }
 
-  for (const auto& panda : pandas) {
-    // VIN query done, stop listening to OBDII
-    panda->set_safety_model(cereal::CarParams::SafetyModel::ELM327, 1);
-  }
+  // for (const auto& panda : pandas) {
+  //   // VIN query done, stop listening to OBDII
+  //   panda->set_safety_model(cereal::CarParams::SafetyModel::ELM327, 1);
+  // }
+  pandas[0]->set_safety_model(cereal::CarParams::SafetyModel::ELM327, 1);
 
   std::string params;
   LOGW("waiting for params to set safety model");
@@ -115,15 +117,18 @@ bool safety_setter_thread(std::vector<Panda *> pandas) {
     safety_param = 0;
   }
 
-  for (const auto& panda : pandas) {
-    panda->set_unsafe_mode(0);  // see safety_declarations.h for allowed values
-  }
+  // for (const auto& panda : pandas) {
+  //   panda->set_unsafe_mode(0);  // see safety_declarations.h for allowed values
+  // }
+  pandas[0]->set_unsafe_mode(0);  // see safety_declarations.h for allowed values
 
   LOGW("setting safety model: %d with param %d", (int)safety_model, safety_param);
-  for (const auto& panda : pandas) {
-    // TODO: do we need to add a safety param which is panda index specific
-    panda->set_safety_model(safety_model, safety_param);
-  }
+
+  // for (const auto& panda : pandas) {
+  //   // TODO: do we need to add a safety param which is panda index specific?
+  //   panda->set_safety_model(safety_model, safety_param);
+  // }
+  pandas[0]->set_safety_model(safety_model, safety_param);
 
   return true;
 }
