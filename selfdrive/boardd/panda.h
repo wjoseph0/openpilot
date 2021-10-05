@@ -58,7 +58,6 @@ class Panda {
   std::atomic<bool> comms_healthy = true;
   cereal::PandaState::PandaType hw_type = cereal::PandaState::PandaType::UNKNOWN;
   bool has_rtc = false;
-  bool is_internal = false;
 
   // Static functions
   static std::vector<std::string> list();
