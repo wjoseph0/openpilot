@@ -71,6 +71,11 @@ std::string get_time_str(const struct tm &time) {
 bool safety_setter_thread(std::vector<Panda *> pandas) {
   LOGD("Starting safety setter thread");
 
+  // there should be at least one panda connected
+  if (pandas.size() == 0) {
+    return false;
+  }
+
   pandas[0]->set_safety_model(cereal::CarParams::SafetyModel::ELM327);
 
   Params p = Params();
@@ -119,26 +124,23 @@ bool safety_setter_thread(std::vector<Panda *> pandas) {
   int safety_param;
 
   auto safety_configs = car_params.getSafetyConfigs();
-  if (safety_configs.size() > 0) {
-    safety_model = safety_configs[0].getSafetyModel();
-    safety_param = safety_configs[0].getSafetyParam();
-  } else {
-    // If no safety mode is set, default to silent
-    safety_model = cereal::CarParams::SafetyModel::SILENT;
-    safety_param = 0;
-  }
+  for (uint32_t i=0; i<pandas.size(); i++) {
+    auto panda = pandas[i];
 
-  for (const auto& panda : pandas) {
+    if (safety_configs.size() > i) {
+      safety_model = safety_configs[i].getSafetyModel();
+      safety_param = safety_configs[i].getSafetyParam();
+    } else {
+      // If no safety mode is specified, default to silent
+      safety_model = cereal::CarParams::SafetyModel::SILENT;
+      safety_param = 0;
+    }
+
+    LOGW("panda %d: setting safety model: %d with param %d", i, (int)safety_model, safety_param);
+
     panda->set_unsafe_mode(0);  // see safety_declarations.h for allowed values
+    panda->set_safety_model(safety_model, safety_param);
   }
-
-  LOGW("setting safety model: %d with param %d", (int)safety_model, safety_param);
-
-  // TODO: we need to add a safety param which is panda index specific?
-  // for (const auto& panda : pandas) {
-  //   panda->set_safety_model(safety_model, safety_param);
-  // }
-  pandas[0]->set_safety_model(safety_model, safety_param);
 
   return true;
 }
