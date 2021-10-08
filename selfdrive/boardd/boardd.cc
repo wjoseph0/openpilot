@@ -624,19 +624,14 @@ int main(int argc, char* argv[]) {
 
   // connect loop
   while (!do_exit) {
-    if (argc == 1) {
-      // no serials provided, so we'll use just the first panda we find
-      Panda *p = usb_connect();
+    std::vector<std::string> serials(argv + 1, argv + argc);
+    if (serials.size() == 0) serials.push_back("");
+
+    // connect to all provided serials
+    for (const auto& s : serials) {
+      Panda *p = usb_connect(s);
       if (p != NULL) {
         pandas.push_back(p);
-      }
-    } else {
-      // connect to all provided serials
-      for (int i=0; i<(argc-1); i++) {
-        Panda *p = usb_connect(std::string(argv[1+i]), i);
-        if (p != NULL) {
-          pandas.push_back(p);
-        }
       }
     }
 
