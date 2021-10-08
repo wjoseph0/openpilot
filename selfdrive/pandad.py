@@ -102,9 +102,6 @@ def panda_sort_cmp(a : Panda, b : Panda):
 def main() -> None:
   while True:
     pandas = get_pandas()
-    if len(pandas) == 0:
-      time.sleep(1)
-      continue
 
     # check health for lost heartbeat
     for panda in pandas:
