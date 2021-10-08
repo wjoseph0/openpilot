@@ -58,7 +58,6 @@
 using namespace std::chrono_literals;
 
 std::atomic<bool> ignition(false);
-std::atomic<bool> all_connected(false);
 
 ExitHandler do_exit;
 
@@ -66,6 +65,13 @@ std::string get_time_str(const struct tm &time) {
   char s[30] = {'\0'};
   std::strftime(s, std::size(s), "%Y-%m-%d %H:%M:%S", &time);
   return s;
+}
+
+bool check_all_connected(std::vector<Panda *> pandas) {
+  for (const auto& panda : pandas) {
+    if (!panda->connected) return false;
+  }
+  return true;
 }
 
 bool safety_setter_thread(std::vector<Panda *> pandas) {
@@ -82,10 +88,8 @@ bool safety_setter_thread(std::vector<Panda *> pandas) {
 
   // switch to SILENT when CarVin param is read
   while (true) {
-    for (const auto& panda : pandas) {
-      if (do_exit || !panda->connected || !ignition) {
-        return false;
-      };
+    if (do_exit || !check_all_connected(pandas) || !ignition) {
+      return false;
     }
 
     std::string value_vin = p.get("CarVin");
@@ -198,10 +202,12 @@ void can_send_thread(std::vector<Panda *> pandas, bool fake_send) {
   subscriber->setTimeout(100);
 
   // run as fast as messages come in
-  while (!do_exit && all_connected) {
-    for (const auto& panda : pandas) {
-      if (!panda->connected) goto fail;
+  while (!do_exit) {
+    if (!check_all_connected(pandas)) {
+      do_exit = true;
+      break;
     }
+
     Message * msg = subscriber->receive();
 
     if (!msg) {
@@ -226,11 +232,8 @@ void can_send_thread(std::vector<Panda *> pandas, bool fake_send) {
     delete msg;
   }
 
-fail:
   delete subscriber;
   delete context;
-
-  all_connected = false;
 }
 
 void can_recv_thread(std::vector<Panda *> pandas) {
@@ -243,11 +246,14 @@ void can_recv_thread(std::vector<Panda *> pandas) {
   const uint64_t dt = 10000000ULL;
   uint64_t next_frame_time = nanos_since_boot() + dt;
 
-  while (!do_exit && all_connected) {
-    for (uint32_t i = 0; i < pandas.size(); i++) {
-      if (!pandas[i]->connected) goto fail;
+  while (!do_exit) {
+    if (!check_all_connected(pandas)){
+      do_exit = true;
+      break;
+    }
 
-      can_recv(pandas[i], pm);
+    for (const auto& panda : pandas) {
+      can_recv(panda, pm);
     }
 
     uint64_t cur_time = nanos_since_boot();
@@ -263,9 +269,6 @@ void can_recv_thread(std::vector<Panda *> pandas) {
 
     next_frame_time += dt;
   }
-
-fail:
-  all_connected = false;
 }
 
 void send_empty_peripheral_state(PubMaster *pm) {
@@ -389,9 +392,10 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
   LOGD("start panda state thread");
 
   // run at 2hz
-  while (!do_exit && all_connected) {
-    for (const auto &panda : pandas) {
-      if (!panda->connected) goto fail;
+  while (!do_exit) {
+    if(!check_all_connected(pandas)) {
+      do_exit = true;
+      break;
     }
 
     send_peripheral_state(pm, peripheral_panda);
@@ -403,7 +407,8 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
     // check if we have new pandas and are offroad
     if (!ignition && (pandas.size() != Panda::list().size())) {
       LOGW("Reconnecting to changed amount of pandas!");
-      goto fail;
+      do_exit = true;
+      break;
     }
 
     // clear VIN, CarParams, and set new safety on car start
@@ -425,9 +430,6 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
     }
     util::sleep_for(500);
   }
-
-fail:
-  all_connected = false;
 }
 
 
@@ -444,7 +446,7 @@ void peripheral_control_thread(Panda *panda) {
 
   FirstOrderFilter integ_lines_filter(0, 30.0, 0.05);
 
-  while (!do_exit && panda->connected && all_connected) {
+  while (!do_exit && panda->connected) {
     cnt++;
     sm.update(1000); // TODO: what happens if EINTR is sent while in sm.update?
 
@@ -520,8 +522,6 @@ void peripheral_control_thread(Panda *panda) {
       }
     }
   }
-
-  all_connected = false;
 }
 
 static void pigeon_publish_raw(PubMaster &pm, const std::string &dat) {
@@ -543,7 +543,7 @@ void pigeon_thread(Panda *panda) {
     {(char)ublox::CLASS_RXM, int64_t(900000000ULL)}, // 0.9s
   };
 
-  while (!do_exit && panda->connected && all_connected) {
+  while (!do_exit && panda->connected) {
     bool need_reset = false;
     std::string recv = pigeon->receive();
 
@@ -602,7 +602,6 @@ void pigeon_thread(Panda *panda) {
   }
 
   delete pigeon;
-  all_connected = false;
 }
 
 int main(int argc, char* argv[]) {
@@ -648,7 +647,6 @@ int main(int argc, char* argv[]) {
   peripheral_panda = pandas[0];
 
   LOGW("connected to board");
-  all_connected = true;
 
   threads.emplace_back(panda_state_thread, &pm, pandas, getenv("STARTED") != nullptr);
   threads.emplace_back(peripheral_control_thread, peripheral_panda);
