@@ -6,20 +6,17 @@ import subprocess
 from typing import List
 from functools import cmp_to_key
 
-from panda import BASEDIR as PANDA_BASEDIR, Panda, PandaDFU
+from panda import BASEDIR as DEFAULT_FW_FN, DEFAULT_H7_FW_FN, Panda, PandaDFU
 from common.basedir import BASEDIR
 from common.params import Params
 from selfdrive.hardware import TICI
 from selfdrive.swaglog import cloudlog
 
-PANDA_FW_FN = os.path.join(PANDA_BASEDIR, "board", "obj", "panda.bin.signed")
-PANDA_H7_FW_FN = os.path.join(PANDA_BASEDIR, "board", "obj", "panda_h7.bin.signed")
-
 INTERNAL_TYPES = [Panda.HW_TYPE_UNO, Panda.HW_TYPE_DOS]
 
 
 def get_expected_signature(panda : Panda) -> bytes:
-  fn = PANDA_H7_FW_FN if (panda._mcu_type == 2) else PANDA_FW_FN
+  fn = DEFAULT_H7_FW_FN if (panda._mcu_type == 2) else DEFAULT_FW_FN
 
   try:
     return Panda.get_signature_from_firmware(fn)
