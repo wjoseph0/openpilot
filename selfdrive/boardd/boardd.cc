@@ -31,6 +31,25 @@
 #include "selfdrive/boardd/panda.h"
 #include "selfdrive/boardd/pigeon.h"
 
+// -- Multi-panda conventions --
+// Ordering:
+// - The internal panda will always be the first panda
+// - Consecutive pandas will be sorted based on panda type, and then serial number
+// Connecting:
+// - If a panda connection is dropped, boardd wil reconnect to all pandas
+// - If a panda is added, we will only reconnect when we are offroad
+// CAN buses:
+// - Each panda will have it's block of 4 buses. E.g.: the second panda will use
+//   bus numbers 4, 5, 6 and 7
+// - The internal panda will always be used for accessing the OBD2 port,
+//   and thus firmware queries
+// Safety:
+// - SafetyConfig is a list, which is mapped to the connected pandas
+// - If there are more pandas connected than there are SafetyConfigs,
+//   the excess pandas will remain in "silent" mode
+// Ignition:
+// - If any of the ignition sources in any panda is high, ignition is high
+
 #define MAX_IR_POWER 0.5f
 #define MIN_IR_POWER 0.0f
 #define CUTOFF_IL 200
