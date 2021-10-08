@@ -12,8 +12,6 @@ from common.params import Params
 from selfdrive.hardware import TICI
 from selfdrive.swaglog import cloudlog
 
-INTERNAL_TYPES = [Panda.HW_TYPE_UNO, Panda.HW_TYPE_DOS]
-
 
 def get_expected_signature(panda : Panda) -> bytes:
   fn = DEFAULT_H7_FW_FN if (panda._mcu_type == 2) else DEFAULT_FW_FN
@@ -97,9 +95,9 @@ def panda_sort_cmp(a : Panda, b : Panda):
   b_type = b.get_type()
 
   # make sure the internal one is always first
-  if (a_type in INTERNAL_TYPES) and (b_type not in INTERNAL_TYPES):
+  if a.is_internal() and not b.is_internal():
     return -1
-  if (a_type not in INTERNAL_TYPES) and (b_type in INTERNAL_TYPES):
+  if not a.is_internal() and b.is_internal():
     return 1
 
   # sort by hardware type
