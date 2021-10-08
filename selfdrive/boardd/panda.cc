@@ -30,7 +30,10 @@ static int init_usb_ctx(libusb_context **context) {
 }
 
 
-Panda::Panda(std::string serial) {
+Panda::Panda(std::string serial, uint32_t bus_offset) {
+  // important for filtering the right CAN bus numbers
+  this->bus_offset = bus_offset;
+
   // init libusb
   ssize_t num_devices;
   libusb_device **dev_list = NULL;
@@ -343,15 +346,20 @@ void Panda::send_heartbeat() {
   usb_write(0xf3, 1, 0);
 }
 
-void Panda::can_send(std::list<cereal::CanData::Reader> can_data_list) {
+void Panda::can_send(capnp::List<cereal::CanData>::Reader can_data_list) {
   static std::vector<uint32_t> send;
   const int msg_count = can_data_list.size();
 
   send.resize(msg_count*0x10);
 
   for (int i = 0; i < msg_count; i++) {
-    auto cmsg = can_data_list.front();
-    can_data_list.pop_front();
+    auto cmsg = can_data_list[i];
+
+    // check if the message is intended for this panda
+    uint8_t bus = cmsg.getSrc();
+    if (bus < bus_offset || bus >= (bus_offset + PANDA_BUS_CNT)) {
+      continue;
+    }
 
     if (cmsg.getAddress() >= 0x800) { // extended
       send[i*4] = (cmsg.getAddress() << 3) | 5;
@@ -360,14 +368,14 @@ void Panda::can_send(std::list<cereal::CanData::Reader> can_data_list) {
     }
     auto can_data = cmsg.getDat();
     assert(can_data.size() <= 8);
-    send[i*4+1] = can_data.size() | (cmsg.getSrc() << 4);
+    send[i*4+1] = can_data.size() | ((bus - bus_offset) << 4);
     memcpy(&send[i*4+2], can_data.begin(), can_data.size());
   }
 
   usb_bulk_write(3, (unsigned char*)send.data(), send.size(), 5);
 }
 
-int Panda::can_receive(kj::Array<capnp::word>& out_buf, uint32_t bus_offset) {
+int Panda::can_receive(kj::Array<capnp::word>& out_buf) {
   uint32_t data[RECV_SIZE/4];
   int recv = usb_bulk_read(0x81, (unsigned char*)data, RECV_SIZE);
 

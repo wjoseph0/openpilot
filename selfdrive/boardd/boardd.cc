@@ -124,10 +124,10 @@ bool safety_setter_thread(std::vector<Panda *> pandas) {
   return true;
 }
 
-Panda *usb_connect(std::string serial="") {
+Panda *usb_connect(std::string serial="", uint32_t index=0) {
   std::unique_ptr<Panda> panda;
   try {
-    panda = std::make_unique<Panda>(serial);
+    panda = std::make_unique<Panda>(serial, (index * PANDA_BUS_CNT));
   } catch (std::exception &e) {
     return nullptr;
   }
@@ -160,9 +160,9 @@ Panda *usb_connect(std::string serial="") {
   return panda.release();
 }
 
-void can_recv(Panda *panda, PubMaster &pm, uint32_t panda_index) {
+void can_recv(Panda *panda, PubMaster &pm) {
   kj::Array<capnp::word> can_data;
-  panda->can_receive(can_data, (panda_index * 4));
+  panda->can_receive(can_data);
   auto bytes = can_data.asBytes();
   pm.send("can", bytes.begin(), bytes.size());
 }
@@ -196,18 +196,8 @@ void can_send_thread(std::vector<Panda *> pandas, bool fake_send) {
     //Dont send if older than 1 second
     if (nanos_since_boot() - event.getLogMonoTime() < 1e9) {
       if (!fake_send) {
-        auto can_data = event.getSendcan();
-
-        for (uint32_t i = 0; i < pandas.size(); i++) {
-          std::list<cereal::CanData::Reader> filtered_can_data;
-
-          for (const auto& msg : can_data) {
-            if ((msg.getSrc() / 4) == i) {
-              filtered_can_data.push_back(msg);
-            }
-          }
-
-          pandas[i]->can_send(filtered_can_data);
+        for (const auto& panda : pandas) {
+          panda->can_send(event.getSendcan());
         }
       }
     }
@@ -236,7 +226,7 @@ void can_recv_thread(std::vector<Panda *> pandas) {
     for (uint32_t i = 0; i < pandas.size(); i++) {
       if (!pandas[i]->connected) goto fail;
 
-      can_recv(pandas[i], pm, i);
+      can_recv(pandas[i], pm);
     }
 
     uint64_t cur_time = nanos_since_boot();
@@ -622,7 +612,7 @@ int main(int argc, char* argv[]) {
     } else {
       // connect to all provided serials
       for (int i=0; i<(argc-1); i++) {
-        Panda *p = usb_connect(std::string(argv[1+i]));
+        Panda *p = usb_connect(std::string(argv[1+i]), i);
         if (p != NULL) {
           pandas.push_back(p);
         }
