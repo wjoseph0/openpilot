@@ -6,7 +6,7 @@ import subprocess
 from typing import List
 from functools import cmp_to_key
 
-from panda import BASEDIR as DEFAULT_FW_FN, DEFAULT_H7_FW_FN, MCU_TYPE_H7, Panda, PandaDFU
+from panda import DEFAULT_FW_FN, DEFAULT_H7_FW_FN, MCU_TYPE_H7, Panda, PandaDFU
 from common.basedir import BASEDIR
 from common.params import Params
 from selfdrive.swaglog import cloudlog
@@ -29,7 +29,7 @@ def flash_panda(panda_serial : str) -> Panda:
 
   panda_version = "bootstub" if panda.bootstub else panda.get_version()
   panda_signature = b"" if panda.bootstub else panda.get_signature()
-  cloudlog.warning(f"Panda %s connected, version: %s, signature %s, expected %s" % (
+  cloudlog.warning("Panda %s connected, version: %s, signature %s, expected %s" % (
     panda_serial,
     panda_version,
     panda_signature.hex()[:16],
@@ -60,25 +60,18 @@ def flash_panda(panda_serial : str) -> Panda:
 
 
 def get_pandas() -> List[Panda]:
-  panda = None
   panda_dfu = None
-
-  cloudlog.info("Connecting to panda")
 
   # Flash all Pandas in DFU mode
   for p in PandaDFU.list():
     cloudlog.info(f"Panda in DFU mode found, flashing recovery {p}")
     panda_dfu = PandaDFU(p)
     panda_dfu.recover()
-    time.sleep(1)
+  time.sleep(1)
 
-  # Ensure we have at least one panda
-  pandas : List[str] = []
-  while not pandas:
-    pandas = Panda.list()
-
-    if not pandas:
-      time.sleep(1)
+  pandas = Panda.list()
+  if len(pandas) == 0:
+    return []
 
   cloudlog.info(f"{len(pandas)} panda(s) found, connecting - {pandas}")
 
@@ -104,25 +97,28 @@ def panda_sort_cmp(a : Panda, b : Panda):
     return a_type < b_type
   
   # last resort: sort by serial number
-  return a._serial < b._serial
+  return a.get_usb_serial() < b.get_usb_serial()
 
 def main() -> None:
   while True:
     pandas = get_pandas()
+    if len(pandas) == 0:
+      time.sleep(1)
+      continue
 
     # check health for lost heartbeat
     for panda in pandas:
       health = panda.health()
       if health["heartbeat_lost"]:
         Params().put_bool("PandaHeartbeatLost", True)
-        cloudlog.event("heartbeat lost", deviceState=health, serial=panda._serial)
+        cloudlog.event("heartbeat lost", deviceState=health, serial=panda.get_usb_serial())
 
-      cloudlog.info(f"Resetting panda {panda._serial}")
+      cloudlog.info(f"Resetting panda {panda.get_usb_serial()}")
       panda.reset()
 
     # sort pandas to have deterministic order
     pandas.sort(key=cmp_to_key(panda_sort_cmp))
-    panda_serials = list(map(lambda p: p._serial, pandas))
+    panda_serials = list(map(lambda p: p.get_usb_serial(), pandas))
 
     # close all pandas
     for p in pandas:
