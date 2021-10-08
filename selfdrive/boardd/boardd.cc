@@ -46,7 +46,7 @@
 // Safety:
 // - SafetyConfig is a list, which is mapped to the connected pandas
 // - If there are more pandas connected than there are SafetyConfigs,
-//   the excess pandas will remain in "silent" mode
+//   the excess pandas will remain in "silent" ot "noOutput" mode
 // Ignition:
 // - If any of the ignition sources in any panda is high, ignition is high
 
@@ -285,70 +285,86 @@ void send_empty_panda_state(PubMaster *pm) {
   pm->send("pandaStates", msg);
 }
 
-bool send_panda_state(PubMaster *pm, Panda *panda, bool spoofing_started) {
-  health_t pandaState = panda->get_state();
-
-  if (spoofing_started) {
-    pandaState.ignition_line = 1;
-  }
-
-  // Make sure CAN buses are live: safety_setter_thread does not work if Panda CAN are silent and there is only one other CAN node
-  if (pandaState.safety_model == (uint8_t)(cereal::CarParams::SafetyModel::SILENT)) {
-    panda->set_safety_model(cereal::CarParams::SafetyModel::NO_OUTPUT);
-  }
-
-  bool ignition = ((pandaState.ignition_line != 0) || (pandaState.ignition_can != 0));
-
-#ifndef __x86_64__
-  bool power_save_desired = !ignition;
-  if (pandaState.power_save_enabled != power_save_desired) {
-    panda->set_power_saving(power_save_desired);
-  }
-
-  // set safety mode to NO_OUTPUT when car is off. ELM327 is an alternative if we want to leverage athenad/connect
-  if (!ignition && (pandaState.safety_model != (uint8_t)(cereal::CarParams::SafetyModel::NO_OUTPUT))) {
-    panda->set_safety_model(cereal::CarParams::SafetyModel::NO_OUTPUT);
-  }
-#endif
+bool send_panda_states(PubMaster *pm, std::vector<Panda *> pandas, bool spoofing_started) {
+  bool ignition = false;
 
   // build msg
   MessageBuilder msg;
   auto evt = msg.initEvent();
-  evt.setValid(panda->comms_healthy);
+  auto pss = evt.initPandaStates(pandas.size());
 
-  // TODO: this has to be adapted to merge in multipanda support
-  auto ps = evt.initPandaStates(1);
-  ps[0].setUptime(pandaState.uptime);
-  ps[0].setIgnitionLine(pandaState.ignition_line);
-  ps[0].setIgnitionCan(pandaState.ignition_can);
-  ps[0].setControlsAllowed(pandaState.controls_allowed);
-  ps[0].setGasInterceptorDetected(pandaState.gas_interceptor_detected);
-  ps[0].setCanRxErrs(pandaState.can_rx_errs);
-  ps[0].setCanSendErrs(pandaState.can_send_errs);
-  ps[0].setCanFwdErrs(pandaState.can_fwd_errs);
-  ps[0].setGmlanSendErrs(pandaState.gmlan_send_errs);
-  ps[0].setPandaType(panda->hw_type);
-  ps[0].setSafetyModel(cereal::CarParams::SafetyModel(pandaState.safety_model));
-  ps[0].setSafetyParam(pandaState.safety_param);
-  ps[0].setFaultStatus(cereal::PandaState::FaultStatus(pandaState.fault_status));
-  ps[0].setPowerSaveEnabled((bool)(pandaState.power_save_enabled));
-  ps[0].setHeartbeatLost((bool)(pandaState.heartbeat_lost));
-  ps[0].setHarnessStatus(cereal::PandaState::HarnessStatus(pandaState.car_harness_status));
+  std::vector<health_t> pandaStates;
+  for (const auto& panda : pandas){
+    health_t pandaState = panda->get_state();
 
-  // Convert faults bitset to capnp list
-  std::bitset<sizeof(pandaState.faults) * 8> fault_bits(pandaState.faults);
-  auto faults = ps[0].initFaults(fault_bits.count());
+    if (spoofing_started) {
+      pandaState.ignition_line = 1;
+    }
 
-  size_t i = 0;
-  for (size_t f = size_t(cereal::PandaState::FaultType::RELAY_MALFUNCTION);
-      f <= size_t(cereal::PandaState::FaultType::INTERRUPT_RATE_TICK); f++) {
-    if (fault_bits.test(f)) {
-      faults.set(i, cereal::PandaState::FaultType(f));
-      i++;
+    ignition |= ((pandaState.ignition_line != 0) || (pandaState.ignition_can != 0));
+
+    pandaStates.push_back(pandaState);
+  }
+
+  for (uint32_t i=0; i<pandas.size(); i++) {
+    auto panda = pandas[i];
+    auto pandaState = pandaStates[i];
+
+    // Make sure CAN buses are live: safety_setter_thread does not work if Panda CAN are silent and there is only one other CAN node
+    if (pandaState.safety_model == (uint8_t)(cereal::CarParams::SafetyModel::SILENT)) {
+      panda->set_safety_model(cereal::CarParams::SafetyModel::NO_OUTPUT);
+    }
+
+  #ifndef __x86_64__
+    bool power_save_desired = !ignition;
+    if (pandaState.power_save_enabled != power_save_desired) {
+      panda->set_power_saving(power_save_desired);
+    }
+
+    // set safety mode to NO_OUTPUT when car is off. ELM327 is an alternative if we want to leverage athenad/connect
+    if (!ignition && (pandaState.safety_model != (uint8_t)(cereal::CarParams::SafetyModel::NO_OUTPUT))) {
+      panda->set_safety_model(cereal::CarParams::SafetyModel::NO_OUTPUT);
+    }
+  #endif
+
+    // TODO: do we still need this?
+    if (!panda->comms_healthy) {
+      evt.setValid(false);
+    }
+
+    auto ps = pss[i];
+    ps.setUptime(pandaState.uptime);
+    ps.setIgnitionLine(pandaState.ignition_line);
+    ps.setIgnitionCan(pandaState.ignition_can);
+    ps.setControlsAllowed(pandaState.controls_allowed);
+    ps.setGasInterceptorDetected(pandaState.gas_interceptor_detected);
+    ps.setCanRxErrs(pandaState.can_rx_errs);
+    ps.setCanSendErrs(pandaState.can_send_errs);
+    ps.setCanFwdErrs(pandaState.can_fwd_errs);
+    ps.setGmlanSendErrs(pandaState.gmlan_send_errs);
+    ps.setPandaType(panda->hw_type);
+    ps.setSafetyModel(cereal::CarParams::SafetyModel(pandaState.safety_model));
+    ps.setSafetyParam(pandaState.safety_param);
+    ps.setFaultStatus(cereal::PandaState::FaultStatus(pandaState.fault_status));
+    ps.setPowerSaveEnabled((bool)(pandaState.power_save_enabled));
+    ps.setHeartbeatLost((bool)(pandaState.heartbeat_lost));
+    ps.setHarnessStatus(cereal::PandaState::HarnessStatus(pandaState.car_harness_status));
+
+    // Convert faults bitset to capnp list
+    std::bitset<sizeof(pandaState.faults) * 8> fault_bits(pandaState.faults);
+    auto faults = ps.initFaults(fault_bits.count());
+
+    size_t j = 0;
+    for (size_t f = size_t(cereal::PandaState::FaultType::RELAY_MALFUNCTION);
+        f <= size_t(cereal::PandaState::FaultType::INTERRUPT_RATE_TICK); f++) {
+      if (fault_bits.test(f)) {
+        faults.set(j, cereal::PandaState::FaultType(f));
+        j++;
+      }
     }
   }
-  pm->send("pandaStates", msg);
 
+  pm->send("pandaStates", msg);
   return ignition;
 }
 
@@ -399,10 +415,7 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
     }
 
     send_peripheral_state(pm, peripheral_panda);
-    ignition = false;
-    for (const auto &panda : pandas) {
-      ignition = ignition || send_panda_state(pm, panda, spoofing_started);
-    }
+    ignition = send_panda_states(pm, pandas, spoofing_started);
 
     // check if we have new pandas and are offroad
     if (!ignition && (pandas.size() != Panda::list().size())) {
